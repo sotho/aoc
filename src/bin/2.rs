@@ -37,8 +37,9 @@ impl Sum<Cubes> for Cubes {
 }
 
 impl Cubes {
+    // get one set
     // example input: "3 blue, 4 red"
-    fn get_cubes(value: &str) -> Cubes {
+    fn get_cubes_one(value: &str) -> Cubes {
         value
             .split(", ")
             .map(|x| -> Cubes {
@@ -64,7 +65,16 @@ impl Cubes {
             .sum::<Cubes>()
     }
 
-    fn max(self, other: Self) -> Self {
+    // get all sets of a game
+    // example input: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green
+    fn get_cubes_all(value: &str) -> Vec<Cubes> {
+        value
+            .split("; ")
+            .map(|x| -> Cubes { Self::get_cubes_one(x) })
+            .collect()
+    }
+
+    fn max(&self, other: &Self) -> Self {
         Cubes {
             red: self.red.max(other.red),
             green: self.green.max(other.green),
@@ -73,19 +83,20 @@ impl Cubes {
     }
 
     fn get_max_cubes(value: &str) -> Cubes {
-        value
-            .split("; ")
-            .map(|x| -> Cubes { Self::get_cubes(x) })
-            .fold(
-                Cubes {
-                    ..Default::default()
-                },
-                |a, b| a.max(b),
-            )
+        Self::get_cubes_all(value).iter().fold(
+            Cubes {
+                ..Default::default()
+            },
+            |a, b| a.max(b),
+        )
     }
 
     fn is_valid(&self) -> bool {
         self.red <= 12 && self.green <= 13 && self.blue <= 14
+    }
+
+    fn power(&self) -> u32 {
+        self.red * self.green * self.blue
     }
 }
 
@@ -110,13 +121,23 @@ fn get_valid_game_sum(value: &str) -> u32 {
         .sum()
 }
 
+fn get_game_power_sum(value: &str) -> u32 {
+    get_all_games(value)
+        .iter()
+        .map(|(_id, cubes)| cubes.power())
+        .sum()
+}
+
 fn main() {
-    let input =
-        fs::read_to_string("2.input").expect("Should have been able to read the file");
+    let input = fs::read_to_string("2.input").expect("Should have been able to read the file");
 
     let result = get_valid_game_sum(&input);
 
     println!("valid game sum: {}", result);
+
+    let result2 = get_game_power_sum(&input);
+    println!("power game sum: {}", result2);
+
 }
 
 #[cfg(test)]
@@ -124,9 +145,9 @@ mod tests {
     use crate::*;
 
     #[test]
-    fn test_cubes() {
+    fn test_cubes_one() {
         assert_eq!(
-            Cubes::get_cubes("3 blue, 4 red"),
+            Cubes::get_cubes_one("3 blue, 4 red"),
             Cubes {
                 red: 4,
                 green: 0,
@@ -134,12 +155,38 @@ mod tests {
             }
         );
         assert_eq!(
-            Cubes::get_cubes("8 green, 6 blue, 20 red"),
+            Cubes::get_cubes_one("8 green, 6 blue, 20 red"),
             Cubes {
                 red: 20,
                 green: 8,
                 blue: 6,
             }
+        );
+    }
+
+    #[test]
+    fn test_cubes_all() {
+        assert_eq!(
+            Cubes::get_cubes_all(
+                "8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red"
+            ),
+            [
+                Cubes {
+                    red: 20,
+                    green: 8,
+                    blue: 6,
+                },
+                Cubes {
+                    red: 4,
+                    green: 13,
+                    blue: 5,
+                },
+                Cubes {
+                    red: 1,
+                    green: 5,
+                    blue: 0,
+                }
+            ]
         );
     }
 
@@ -251,5 +298,25 @@ mod tests {
             fs::read_to_string("2sample.input").expect("Should have been able to read the file");
 
         assert_eq!(get_valid_game_sum(&input), 8);
+    }
+
+    #[test]
+    fn test_power() {
+        assert_eq!(
+            Cubes {
+                red: 4,
+                green: 2,
+                blue: 6
+            }.power(),
+            48
+        );
+    }
+
+    #[test]
+    fn test_game_power_sum() {
+        let input =
+            fs::read_to_string("2sample.input").expect("Should have been able to read the file");
+
+        assert_eq!(get_game_power_sum(&input), 2286);
     }
 }
