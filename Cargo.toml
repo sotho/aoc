@@ -14,5 +14,8 @@ name = "1plus"
 [[bin]]
 name = "2"
 
+[[bin]]
+name = "3"
+
 [dependencies]
 regex = "1.10.2"
