@@ -40,19 +40,20 @@ impl Schema {
     }
 
     // find all numbers that might be a serial
-    fn find_serial(&self) -> SerialIterator {
-        SerialIterator {
+    fn find_serial_candidates(&self) -> ThingIterator {
+        ThingIterator {
             schema: self,
-            pos: SerialPosition {
+            pos: ThingPosition {
                 x: 0,
                 y: 0,
                 length: 0,
             },
+            is_thing: is_numeric,
         }
     }
 
     // find all adjacent chars of a number
-    fn find_adjacent<'a>(&'a self, pos: &'a SerialPosition) -> AdjacentIterator {
+    fn find_adjacent<'a>(&'a self, pos: &'a ThingPosition) -> AdjacentIterator {
         AdjacentIterator {
             schema: self,
             pos: pos,
@@ -62,11 +63,11 @@ impl Schema {
     }
 
     // check if really serial
-    fn is_serial(&self, pos: &SerialPosition) -> bool {
+    fn is_serial(&self, pos: &ThingPosition) -> bool {
         self.find_adjacent(pos).any(|x| is_symbol(x))
     }
 
-    fn get_number(&self, pos: &SerialPosition) -> u32 {
+    fn get_number(&self, pos: &ThingPosition) -> u32 {
         self.field[pos.y][pos.x..pos.x + pos.length]
             .into_iter()
             .collect::<String>()
@@ -75,48 +76,87 @@ impl Schema {
     }
 
     fn sum_serial(&self) -> u32 {
-        self.find_serial()
+        self.find_serial_candidates()
             .filter(|x| self.is_serial(&x))
             .map(|x| self.get_number(&x))
             .sum()
     }
+
+    fn find_gear_candidates(&self) -> ThingIterator {
+        ThingIterator {
+            schema: self,
+            pos: ThingPosition {
+                x: 0,
+                y: 0,
+                length: 0,
+            },
+            is_thing: is_gear,
+        }
+    }
+
+    fn sum_gears(&self) -> u32 {
+        self
+            .find_gear_candidates()
+            .map(|gear| {
+                self.find_serial_candidates()
+                    .filter(|serial| gear.is_adjacent(serial)) // find all numbers next to gear
+                    .map(|serial| self.get_number(&serial))
+                    .collect::<Vec<u32>>()
+            })
+            .filter(|serials| serials.len() == 2) // must be 2 numbers
+            .map(|serials| serials.iter().fold(1, |a, b| a * b)) // multiply them
+            .sum::<u32>() // add products
+    }
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-struct SerialPosition {
+struct ThingPosition {
     x: usize,
     y: usize,
     length: usize,
 }
 
-struct SerialIterator<'a> {
+impl ThingPosition {
+    fn is_adjacent(&self, other: &Self) -> bool {
+        self.x <= other.x + other.length
+            && self.x + self.length >= other.x
+            && self.y <= other.y + 1
+            && self.y + 1 >= other.y
+    }
+}
+
+struct ThingIterator<'a> {
     schema: &'a Schema,
-    pos: SerialPosition,
+    pos: ThingPosition,
+    is_thing: fn(char) -> bool,
+}
+
+fn is_numeric(value: char) -> bool {
+    value.is_numeric()
 }
 
 fn is_symbol(value: char) -> bool {
     !value.is_numeric() && value != '.'
 }
 
-impl Iterator for SerialIterator<'_> {
-    type Item = SerialPosition;
+fn is_gear(value: char) -> bool {
+    value == '*'
+}
+
+impl Iterator for ThingIterator<'_> {
+    type Item = ThingPosition;
 
     // Find start position and length of each serial number
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if self
-                .schema
-                .get(self.pos.x as i32, self.pos.y as i32)
-                .is_numeric()
-            {
+            if (self.is_thing)(self.schema.get(self.pos.x as i32, self.pos.y as i32)) {
                 // found start of a number
                 loop {
                     self.pos.length += 1;
-                    if !self
-                        .schema
-                        .get((self.pos.x + self.pos.length) as i32, self.pos.y as i32)
-                        .is_numeric()
-                    {
+                    if !(self.is_thing)(
+                        self.schema
+                            .get((self.pos.x + self.pos.length) as i32, self.pos.y as i32),
+                    ) {
                         break;
                     }
                 }
@@ -142,7 +182,7 @@ impl Iterator for SerialIterator<'_> {
 
 struct AdjacentIterator<'a> {
     schema: &'a Schema,
-    pos: &'a SerialPosition,
+    pos: &'a ThingPosition,
     x: i32,
     y: i32,
 }
@@ -180,6 +220,7 @@ fn main() {
     let input = fs::read_to_string("3.input").expect("Should have been able to read the file");
     let s = Schema::new(&input);
     println!("Sum of serials: {}", s.sum_serial());
+    println!("Sum of gears: {}", s.sum_gears());
 }
 
 #[cfg(test)]
@@ -222,14 +263,14 @@ mod tests {
     }
 
     #[test]
-    fn test_find_serial() {
+    fn test_find_serial_candidates() {
         let s = Schema::new("467..114.9\n...*......\n..35..633.\n");
 
-        let mut iter = s.find_serial();
+        let mut iter = s.find_serial_candidates();
 
         assert_eq!(
             iter.next(),
-            Some(SerialPosition {
+            Some(ThingPosition {
                 x: 0,
                 y: 0,
                 length: 3
@@ -237,7 +278,7 @@ mod tests {
         );
         assert_eq!(
             iter.next(),
-            Some(SerialPosition {
+            Some(ThingPosition {
                 x: 5,
                 y: 0,
                 length: 3
@@ -245,7 +286,7 @@ mod tests {
         );
         assert_eq!(
             iter.next(),
-            Some(SerialPosition {
+            Some(ThingPosition {
                 x: 9,
                 y: 0,
                 length: 1
@@ -253,7 +294,7 @@ mod tests {
         );
         assert_eq!(
             iter.next(),
-            Some(SerialPosition {
+            Some(ThingPosition {
                 x: 2,
                 y: 2,
                 length: 2
@@ -261,7 +302,7 @@ mod tests {
         );
         assert_eq!(
             iter.next(),
-            Some(SerialPosition {
+            Some(ThingPosition {
                 x: 6,
                 y: 2,
                 length: 3
@@ -273,7 +314,7 @@ mod tests {
     #[test]
     fn test_find_adjacent() {
         let s = Schema::new("467..114.9\n...*......\n");
-        let Some(serial) = s.find_serial().next() else {
+        let Some(serial) = s.find_serial_candidates().next() else {
             panic!("broken text")
         };
         let mut adjacent_iter = s.find_adjacent(&serial);
@@ -290,7 +331,7 @@ mod tests {
         let input =
             fs::read_to_string("3sample.input").expect("Should have been able to read the file");
         let s = Schema::new(&input);
-        let Some(serial) = s.find_serial().next() else {
+        let Some(serial) = s.find_serial_candidates().next() else {
             panic!("broken text")
         };
 
@@ -300,7 +341,7 @@ mod tests {
     #[test]
     fn test_get_number() {
         let s = Schema::new("467..114.9\n...*......\n");
-        let Some(serial) = s.find_serial().next() else {
+        let Some(serial) = s.find_serial_candidates().next() else {
             panic!("broken text")
         };
 
@@ -314,5 +355,99 @@ mod tests {
         let s = Schema::new(&input);
 
         assert_eq!(s.sum_serial(), 4361);
+    }
+
+    #[test]
+    fn test_find_gear_candidates() {
+        let input =
+            fs::read_to_string("3sample.input").expect("Should have been able to read the file");
+        let s = Schema::new(&input);
+
+        let mut iter = s.find_gear_candidates();
+
+        assert_eq!(
+            iter.next(),
+            Some(ThingPosition {
+                x: 3,
+                y: 1,
+                length: 1
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(ThingPosition {
+                x: 3,
+                y: 4,
+                length: 1
+            })
+        );
+        assert_eq!(
+            iter.next(),
+            Some(ThingPosition {
+                x: 5,
+                y: 8,
+                length: 1
+            })
+        );
+        assert_eq!(iter.next(), None);
+    }
+
+    #[test]
+    fn test_is_adjacent() {
+        let num = ThingPosition {
+            x: 6,
+            y: 2,
+            length: 3,
+        };
+
+        assert_eq!(
+            num.is_adjacent(&ThingPosition {
+                x: 5,
+                y: 2,
+                length: 1
+            }),
+            true
+        );
+        assert_eq!(
+            num.is_adjacent(&ThingPosition {
+                x: 4,
+                y: 2,
+                length: 1
+            }),
+            false
+        );
+        assert_eq!(
+            num.is_adjacent(&ThingPosition {
+                x: 5,
+                y: 1,
+                length: 1
+            }),
+            true
+        );
+        assert_eq!(
+            num.is_adjacent(&ThingPosition {
+                x: 9,
+                y: 1,
+                length: 1
+            }),
+            true
+        );
+        assert_eq!(
+            num.is_adjacent(&ThingPosition {
+                x: 10,
+                y: 1,
+                length: 1
+            }),
+            false
+        );
+    }
+
+    #[test]
+    fn test_sum_gears() {
+        let input =
+            fs::read_to_string("3sample.input").expect("Should have been able to read the file");
+        let s = Schema::new(&input);
+
+        assert_eq!(s.sum_gears(), 467835);
     }
 }
